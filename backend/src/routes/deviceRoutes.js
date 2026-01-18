@@ -120,8 +120,28 @@ router.post("/location", authDevice, async (req, res) => {
  */
 router.get("/list", authAdmin, async (_req, res) => {
   const devices = await Device.find().sort({ updatedAt: -1 }).lean();
-  res.json({ devices });
+
+  const OFFLINE_AFTER_MS = 2 * 60 * 1000; // 2 minutes (change to 5 min if you want)
+  const now = Date.now();
+
+  const computed = devices.map((d) => {
+    const lastSeen = d?.status?.lastSeen
+      ? new Date(d.status.lastSeen).getTime()
+      : 0;
+    const isOnline = lastSeen && now - lastSeen <= OFFLINE_AFTER_MS;
+
+    return {
+      ...d,
+      status: {
+        ...(d.status || {}),
+        online: isOnline,
+      },
+    };
+  });
+
+  res.json({ devices: computed });
 });
+
 router.get("/:deviceId/details", authAdmin, async (req, res) => {
   const { deviceId } = req.params;
 

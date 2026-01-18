@@ -41,6 +41,34 @@ io.on("connection", (socket) => {
 
   socket.on("join-admin", () => socket.join("admins"));
 });
+setInterval(async () => {
+  const OFFLINE_AFTER_MS = 2 * 60 * 1000;
+  const now = Date.now();
+
+  const devices = await Device.find().lean();
+
+  for (const d of devices) {
+    const lastSeen = d?.status?.lastSeen
+      ? new Date(d.status.lastSeen).getTime()
+      : 0;
+    const shouldBeOnline = lastSeen && now - lastSeen <= OFFLINE_AFTER_MS;
+
+    if ((d.status?.online ?? false) !== shouldBeOnline) {
+      await Device.updateOne(
+        { _id: d._id },
+        { $set: { "status.online": shouldBeOnline } },
+      );
+
+      io.to("admins").emit("device-update", {
+        deviceId: d.deviceId,
+        online: shouldBeOnline,
+        lastSeen: d.status?.lastSeen,
+        lastLocation: d.lastLocation,
+        lockState: d.lockState,
+      });
+    }
+  }
+}, 30 * 1000); // every 30 sec
 
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);
