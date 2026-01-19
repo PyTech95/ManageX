@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { MapPin, Eye, X } from "lucide-react";
 import manageXLogo from "./assets/mangeX.png";
 
-const API = "http://localhost:8080";
+const API = "https://managexbackend.onrender.com";
 
 /* ================= Helpers ================= */
 function getQueryParam(name) {
