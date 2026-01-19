@@ -57,3 +57,4 @@ D:\centralized-device-management\agent\DeviceAgent\obj\Debug\net10.0\refint\Devi
 D:\centralized-device-management\agent\DeviceAgent\obj\Debug\net10.0\DeviceAgent.pdb
 D:\centralized-device-management\agent\DeviceAgent\obj\Debug\net10.0\DeviceAgent.genruntimeconfig.cache
 D:\centralized-device-management\agent\DeviceAgent\obj\Debug\net10.0\ref\DeviceAgent.dll
+D:\centralized-device-management\agent\DeviceAgent\obj\Debug\net10.0\DeviceAgent.sourcelink.json

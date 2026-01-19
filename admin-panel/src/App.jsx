@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 import { toast } from "sonner";
 import { MapPin, Eye, X } from "lucide-react";
-import manageXLogo from "./assets/mangeX.png"
+import manageXLogo from "./assets/mangeX.png";
 
-const API = "https://managexbackend.onrender.com";
+const API = "http://localhost:8080";
 
 /* ================= Helpers ================= */
 function getQueryParam(name) {
@@ -22,14 +22,12 @@ function formatDateTime(v) {
 }
 
 function LocationCell({ loc }) {
-  // 1) City-based (IP geo / reverse geo)
   if (loc?.city) {
     const region = loc?.region ? `, ${loc.region}` : "";
     const country = loc?.country ? `, ${loc.country}` : "";
     return <span>{`${loc.city}${region}${country}`}</span>;
   }
 
-  // 2) Lat/Lng-based (WIN location)
   if (typeof loc?.lat === "number" && typeof loc?.lng === "number") {
     const mapsUrl = `https://www.google.com/maps?q=${loc.lat},${loc.lng}`;
     return (
@@ -145,10 +143,6 @@ function SoftwarePage({ apiBase }) {
                     </tbody>
                   </table>
                 </div>
-
-                <p className="mt-4 text-xs text-gray-500">
-                  Tip: Next, we can add search + date picker here.
-                </p>
               </>
             )}
           </div>
@@ -160,7 +154,6 @@ function SoftwarePage({ apiBase }) {
 
 /* ================= Main App ================= */
 export default function App() {
-  // If opened in new tab for software list
   const view = getQueryParam("view");
   if (view === "software") return <SoftwarePage apiBase={API} />;
 
@@ -171,7 +164,7 @@ export default function App() {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const [selected, setSelected] = useState(null); // { device, summary, usage, today }
+  const [selected, setSelected] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
@@ -249,13 +242,39 @@ export default function App() {
 
     loadDevices(token);
 
-    const socket = io(API);
+    const socket = io(API, { transports: ["websocket"] });
     socket.emit("join-admin");
 
     socket.on("device-update", (u) => {
+      // ✅ Update devices table
       setDevices((prev) =>
         prev.map((d) => (d.deviceId === u.deviceId ? { ...d, ...u } : d))
       );
+
+      // ✅ Update modal live (FIXED)
+      setSelected((prev) => {
+        if (!prev?.device?.deviceId) return prev;
+        if (prev.device.deviceId !== u.deviceId) return prev;
+
+        const nextOnline =
+          u?.status?.online ?? u?.online ?? prev.device.status?.online ?? false;
+        const nextLastSeen =
+          u?.status?.lastSeen ?? u?.lastSeen ?? prev.device.status?.lastSeen ?? null;
+
+        return {
+          ...prev,
+          device: {
+            ...prev.device,
+            status: {
+              ...(prev.device.status || {}),
+              online: nextOnline,
+              lastSeen: nextLastSeen,
+            },
+            lastLocation: u.lastLocation ?? prev.device.lastLocation,
+            lockState: u.lockState ?? prev.device.lockState,
+          },
+        };
+      });
     });
 
     return () => socket.close();
@@ -313,16 +332,11 @@ export default function App() {
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div className="flex flex-col items-center">
-          <img
-            src={manageXLogo}
-            alt="ManageX Logo"
-            className="h-14 mb-2 mr-35"
-          />
-
-          <p className="text-center text-gray-500 text-sm">
-             Monitor and control company devices in real time
-          </p>
-        </div>
+            <img src={manageXLogo} alt="ManageX Logo" className="h-14 mb-2" />
+            <p className="text-center text-gray-500 text-sm">
+              Monitor and control company devices in real time
+            </p>
+          </div>
 
           <button
             onClick={() => {
@@ -335,7 +349,7 @@ export default function App() {
           </button>
         </div>
 
-        <div className="bg-white rounded-lg shadow-xl border-1 overflow-x-auto">
+        <div className="bg-white rounded-lg shadow-xl border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-cyan-100">
               <tr>
@@ -351,11 +365,15 @@ export default function App() {
 
             <tbody>
               {devices.map((d) => {
-                const online = d?.status?.online ?? d.online;
-                const lastSeen = d?.status?.lastSeen ?? d?.lastSeen;
+                const online = d?.status?.online ?? d?.online ?? false;
+                const lastSeen = d?.status?.lastSeen ?? d?.lastSeen ?? null;
+
+                const ago = lastSeen
+                  ? Math.floor((Date.now() - new Date(lastSeen).getTime()) / 60000)
+                  : null;
 
                 return (
-                  <tr key={d.deviceId} className=" hover:bg-gray-50">
+                  <tr key={d.deviceId} className="border-t hover:bg-gray-50">
                     <td className="p-3 font-mono">{d.deviceId}</td>
                     <td className="p-3">{d.username || "—"}</td>
 
@@ -369,6 +387,12 @@ export default function App() {
                       >
                         {online ? "Online" : "Offline"}
                       </span>
+
+                      {!online && ago !== null && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Last seen {ago} min ago
+                        </div>
+                      )}
                     </td>
 
                     <td className="p-3">{formatDateTime(lastSeen)}</td>
@@ -394,15 +418,15 @@ export default function App() {
                         </button>
                       </div>
                     </td>
+
                     <td className="p-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => openDetails(d.deviceId)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center gap-1"
-                        >
-                          <Eye size={16} />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => openDetails(d.deviceId)}
+                        className="px-3 py-1.5 text-xs font-medium rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100"
+                        title="View Details"
+                      >
+                        <Eye size={16} />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -410,7 +434,7 @@ export default function App() {
 
               {devices.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="text-center p-6 text-gray-400">
+                  <td colSpan="7" className="text-center p-6 text-gray-400">
                     No devices found
                   </td>
                 </tr>
@@ -425,7 +449,6 @@ export default function App() {
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
           onMouseDown={(e) => {
-            // click outside to close
             if (e.target === e.currentTarget) {
               setDetailsOpen(false);
               setSelected(null);
@@ -434,7 +457,7 @@ export default function App() {
         >
           <div className="bg-white w-full max-w-xl max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-2 border-b">
+            <div className="flex items-center justify-between px-5 py-3 border-b">
               <div>
                 <h3 className="text-lg font-semibold">Device Details</h3>
                 <p className="text-xs text-gray-500">
@@ -465,107 +488,83 @@ export default function App() {
               </div>
             </div>
 
-            <div className="p-2">
+            <div className="p-4 overflow-y-auto">
               {detailsLoading ? (
                 <div className="text-sm text-gray-500">Loading details...</div>
               ) : !selected ? (
                 <div className="text-sm text-gray-500">No data</div>
               ) : (
                 <>
-                  {/* Top info cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                    <div className="bg-gray-50 rounded-2xl p-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div className="bg-gray-50 rounded-2xl p-3">
                       <div className="text-xs text-gray-500">User</div>
-                      <div className="font-semibold text-gray-900 mt-1">
+                      <div className="font-semibold mt-1">
                         {selected.device.username || "—"}
                       </div>
                     </div>
 
-                    <div className="bg-gray-50 rounded-2xl p-2">
+                    <div className="bg-gray-50 rounded-2xl p-3">
                       <div className="text-xs text-gray-500">OS</div>
-                      <div className="font-semibold text-gray-900 mt-1">
+                      <div className="font-semibold mt-1">
                         {selected.device.os || "—"}
                       </div>
                     </div>
 
-                    <div className="bg-gray-50 rounded-2xl p-2">
+                    <div className="bg-gray-50 rounded-2xl p-3">
                       <div className="text-xs text-gray-500">Model</div>
-                      <div className="font-semibold text-gray-900 mt-1">
+                      <div className="font-semibold mt-1">
                         {selected.device.model || "—"}
                       </div>
                     </div>
 
-                    <div className="bg-gray-50 rounded-2xl p-2">
+                    <div className="bg-gray-50 rounded-2xl p-3">
                       <div className="text-xs text-gray-500">Lock State</div>
-                      <div className="font-semibold text-gray-900 mt-1">
+                      <div className="font-semibold mt-1">
                         {selected.device.lockState || "—"}
                       </div>
                     </div>
 
-                    <div className="bg-gray-50 rounded-2xl p-2">
+                    <div className="bg-gray-50 rounded-2xl p-3">
                       <div className="text-xs text-gray-500">Online</div>
-                      <div className="font-semibold text-gray-900 mt-1">
+                      <div className="font-semibold mt-1">
                         {(selected.device.status?.online ?? false) ? "Online" : "Offline"}
                       </div>
                     </div>
 
-                    <div className="bg-gray-50 rounded-2xl p-2">
+                    <div className="bg-gray-50 rounded-2xl p-3">
                       <div className="text-xs text-gray-500">Last Seen</div>
-                      <div className="font-semibold text-gray-900 mt-1">
+                      <div className="font-semibold mt-1">
                         {formatDateTime(selected.device.status?.lastSeen)}
                       </div>
                     </div>
                   </div>
 
-                  {/* Location */}
-                  <div className="mt-4 bg-gray-50 rounded-2xl p-2 text-sm">
+                  <div className="mt-4 bg-gray-50 rounded-2xl p-3 text-sm">
                     <div className="text-xs text-gray-500 mb-1">Last Location</div>
-                    {(() => {
-                      const loc = selected.device.lastLocation;
-                      if (!loc) return <div>—</div>;
-
-                      const cityText = loc.city
-                        ? `${loc.city}${loc.region ? ", " + loc.region : ""}${loc.country ? ", " + loc.country : ""}`
-                        : null;
-
-                      const coordsText =
-                        typeof loc.lat === "number" && typeof loc.lng === "number"
-                          ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`
-                          : null;
-
-                      const mapsUrl =
-                        typeof loc.lat === "number" && typeof loc.lng === "number"
-                          ? `https://www.google.com/maps?q=${loc.lat},${loc.lng}`
-                          : null;
-
-                      return (
-                        <div className="flex items-center justify-between gap-1">
-                          <div>
-                            <div className="font-semibold text-gray-900">
-                              {cityText || coordsText || "N/A"}
-                            </div>
-                          </div>
-
-                          {mapsUrl && (
-                            <a
-                              href={mapsUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-600 hover:underline text-sm flex items-center gap-1"
-                            >
-                              <MapPin size={16} /> Open Map
-                            </a>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold">
+                        <LocationCell loc={selected.device.lastLocation} />
+                      </div>
+                      {typeof selected.device.lastLocation?.lat === "number" &&
+                        typeof selected.device.lastLocation?.lng === "number" && (
+                          <a
+                            href={`https://www.google.com/maps?q=${selected.device.lastLocation.lat},${selected.device.lastLocation.lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                          >
+                            <MapPin size={16} /> Open Map
+                          </a>
+                        )}
+                    </div>
                   </div>
 
-                  {/* Big “Total Software Used Today” card */}
-                  <div className="mt-5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-2 text-white">
+                  <div className="mt-5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm opacity-90">Total Software Used Today</div>
+                        <div className="text-sm opacity-90">
+                          Total Software Used Today
+                        </div>
                         <div className="text-3xl font-bold">
                           {selected.summary?.softwareCount ?? 0}
                         </div>

@@ -10,7 +10,9 @@ const { Server } = require("socket.io");
 const deviceRoutes = require("./src/routes/deviceRoutes");
 const usageRoutes = require("./src/routes/usageRoutes");
 const adminRoutes = require("./src/routes/adminRoutes");
-const { authAdmin } = require("./src/middleware/authAdmin");
+
+// ✅ ADD THIS (IMPORTANT)
+const Device = require("./src/models/Device");
 
 const app = express();
 const server = http.createServer(app);
@@ -33,40 +35,48 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/device", deviceRoutes);
 app.use("/api/usage", usageRoutes);
 
-// Admin socket (optional)
+// Socket rooms
 io.on("connection", (socket) => {
   socket.on("join-device", ({ deviceId }) => {
-    socket.join(`device:${deviceId}`);
+    if (deviceId) socket.join(`device:${deviceId}`);
   });
 
   socket.on("join-admin", () => socket.join("admins"));
 });
+
+// ✅ Offline detector (Real-time online/offline)
 setInterval(async () => {
-  const OFFLINE_AFTER_MS = 2 * 60 * 1000;
-  const now = Date.now();
+  try {
+    const OFFLINE_AFTER_MS = 2 * 60 * 1000; // 2 min
+    const now = Date.now();
 
-  const devices = await Device.find().lean();
+    const devices = await Device.find().lean();
 
-  for (const d of devices) {
-    const lastSeen = d?.status?.lastSeen
-      ? new Date(d.status.lastSeen).getTime()
-      : 0;
-    const shouldBeOnline = lastSeen && now - lastSeen <= OFFLINE_AFTER_MS;
+    for (const d of devices) {
+      const lastSeen = d?.status?.lastSeen
+        ? new Date(d.status.lastSeen).getTime()
+        : 0;
 
-    if ((d.status?.online ?? false) !== shouldBeOnline) {
-      await Device.updateOne(
-        { _id: d._id },
-        { $set: { "status.online": shouldBeOnline } },
-      );
+      const shouldBeOnline = !!lastSeen && now - lastSeen <= OFFLINE_AFTER_MS;
 
-      io.to("admins").emit("device-update", {
-        deviceId: d.deviceId,
-        online: shouldBeOnline,
-        lastSeen: d.status?.lastSeen,
-        lastLocation: d.lastLocation,
-        lockState: d.lockState,
-      });
+      // Only update if changed
+      if ((d.status?.online ?? false) !== shouldBeOnline) {
+        await Device.updateOne(
+          { _id: d._id },
+          { $set: { "status.online": shouldBeOnline } },
+        );
+
+        io.to("admins").emit("device-update", {
+          deviceId: d.deviceId,
+          online: shouldBeOnline,
+          lastSeen: d.status?.lastSeen,
+          lastLocation: d.lastLocation,
+          lockState: d.lockState,
+        });
+      }
     }
+  } catch (err) {
+    console.error("Offline detector error:", err.message);
   }
 }, 30 * 1000); // every 30 sec
 
@@ -74,7 +84,9 @@ setInterval(async () => {
   await mongoose.connect(process.env.MONGO_URI);
   console.log("Mongo connected");
 
-  server.listen(process.env.PORT, () => {
-    console.log(`Backend running on :${process.env.PORT}`);
+  const PORT = process.env.PORT || 8080;
+
+  server.listen(PORT, () => {
+    console.log(`Backend running on :${PORT}`);
   });
 })();

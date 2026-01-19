@@ -1,18 +1,19 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-var builder = Host.CreateDefaultBuilder(args)
+IHost host = Host.CreateDefaultBuilder(args)
+    .UseWindowsService(options => { options.ServiceName = "DeviceAgent"; })
     .ConfigureServices(services =>
     {
+        services.AddHttpClient();
         services.AddHostedService<Worker>();
-        services.AddHttpClient(); // required for IHttpClientFactory
-    });
+    })
+    .ConfigureLogging(logging =>
+    {
+        logging.ClearProviders();
+        logging.AddEventLog(); // logs to Event Viewer
+    })
+    .Build();
 
-// Only use Windows Service when not debugging
-if (!System.Diagnostics.Debugger.IsAttached)
-{
-    builder.UseWindowsService();
-}
-
-var host = builder.Build();
 await host.RunAsync();

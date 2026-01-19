@@ -14,7 +14,7 @@ public class Worker : BackgroundService
     private string? _deviceToken;
     private readonly string _deviceId = Environment.MachineName;
 
-    private const string BackendBaseUrl = "http://localhost:8080"; // change for production
+    private const string BackendBaseUrl = "https://managexbackend.onrender.com"; // change for production
     private SocketIOClient.SocketIO? _socket;
 
     public Worker(ILogger<Worker> logger, IHttpClientFactory httpClientFactory)
@@ -27,23 +27,34 @@ public class Worker : BackgroundService
     {
         _logger.LogInformation("Agent started. DeviceId={deviceId}", _deviceId);
 
-        _deviceToken = await RegisterDeviceAsync(stoppingToken);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_deviceToken))
+                {
+                    _deviceToken = await RegisterDeviceAsync(stoppingToken);
+                    if (string.IsNullOrWhiteSpace(_deviceToken))
+                    {
+                        _logger.LogWarning("Register failed. Retrying in 30s...");
+                        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                        continue;
+                    }
+                }
 
-        _logger.LogInformation("Device token present: {present}, length={len}",
-            !string.IsNullOrEmpty(_deviceToken), _deviceToken?.Length ?? 0);
+                _ = StartSocketAsync(stoppingToken);
 
-        // ✅ For localhost testing: send a test location once (so Admin Panel doesn't show N/A)
-        // Replace this later with real Windows Location API (Phase-2 helper).
-        await SendTestLocationAsync(stoppingToken);
-
-        // Start socket listener
-        _ = StartSocketAsync(stoppingToken);
-
-        // Run loops
-        var heartbeatTask = HeartbeatLoop(stoppingToken);
-        var processTask = ProcessTrackingLoop(stoppingToken);
-
-        await Task.WhenAll(heartbeatTask, processTask);
+                await Task.WhenAll(
+                    HeartbeatLoop(stoppingToken),
+                    ProcessTrackingLoop(stoppingToken)
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Fatal loop error. Retrying in 10s...");
+                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+            }
+        }
     }
 
     // Create client with correct headers (no duplicates)

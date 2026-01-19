@@ -3,11 +3,6 @@ const jwt = require("jsonwebtoken");
 
 const router = express.Router();
 
-/**
- * MVP login (replace with DB later)
- * email: admin@company.com
- * password: admin123
- */
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   if (email === "admin@company.com" && password === "admin1239@572") {

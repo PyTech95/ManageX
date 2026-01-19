@@ -1,0 +1,4 @@
+D:\centralized-device-management\agent\DeviceAgent\bin\Release\net10.0\win-x64\publish\appsettings.Development.json
+D:\centralized-device-management\agent\DeviceAgent\bin\Release\net10.0\win-x64\publish\appsettings.json
+D:\centralized-device-management\agent\DeviceAgent\bin\Release\net10.0\win-x64\publish\DeviceAgent.pdb
+D:\centralized-device-management\agent\DeviceAgent\bin\Release\net10.0\win-x64\publish\DeviceAgent.exe
